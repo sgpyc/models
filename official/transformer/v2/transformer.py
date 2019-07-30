@@ -30,7 +30,8 @@ from official.transformer.v2 import beam_search
 from official.transformer.v2 import embedding_layer
 from official.transformer.v2 import ffn_layer
 from official.transformer.v2 import metrics
-
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import nn
 
 def create_model(params, is_train):
   """Creates transformer model."""
@@ -76,6 +77,7 @@ class Transformer(tf.keras.Model):
     """
     super(Transformer, self).__init__(name=name)
     self.params = params
+    print("params[vocab_size] = ", params["vocab_size"])
     self.embedding_softmax_layer = embedding_layer.EmbeddingSharedWeights(
         params["vocab_size"], params["hidden_size"])
     self.encoder_stack = EncoderStack(params)
@@ -298,12 +300,140 @@ class Transformer(tf.keras.Model):
 
     return {"outputs": top_decoded_ids, "scores": top_scores}
 
+def shape_list(x):
+  """Return list of dims, statically where possible."""
+  x = tf.convert_to_tensor(x)
 
-class LayerNormalization(tf.keras.layers.Layer):
+  # If unknown rank, return dynamic shape
+  if x.get_shape().dims is None:
+    return tf.shape(x)
+
+  static = x.get_shape().as_list()
+  shape = tf.shape(x)
+
+  ret = []
+  for i in range(len(static)):
+    dim = static[i]
+    if dim is None:
+      dim = shape[i]
+    ret.append(dim)
+  return ret
+
+def cast_like(x, y):
+  """Cast x to y's dtype, if necessary."""
+  x = tf.convert_to_tensor(x)
+  y = tf.convert_to_tensor(y)
+
+  if x.dtype.base_dtype == y.dtype.base_dtype:
+    return x
+
+  cast_x = tf.cast(x, y.dtype)
+  if cast_x.device != x.device:
+    tf.compat.v1.logging.warning("Cast for %s may induce copy from '%s' to '%s'", x.name,
+                       x.device, cast_x.device)
+  return cast_x
+
+def layer_norm_vars(filters):
+  """Create Variables for layer norm."""
+  scale = tf.compat.v1.get_variable(
+      "layer_norm_scale", filters, initializer=tf.ones_initializer())
+  bias = tf.compat.v1.get_variable(
+      "layer_norm_bias", filters, initializer=tf.zeros_initializer())
+  return scale, bias
+
+def layer_norm_compute(x, epsilon, scale, bias):
+  """Layer norm raw computation."""
+  epsilon, scale, bias = [cast_like(t, x) for t in [epsilon, scale, bias]]
+  counts, means_ss, variance_ss, _, = tf.nn.sufficient_statistics(
+      x, axes=[-1], keepdims=True)
+  mean, variance = tf.nn.normalize_moments(counts, means_ss, variance_ss, None)
+  print("mean.shape = ", mean.shape, ", variance.shape = ", variance.shape)
+  norm_x = (x - mean) * tf.math.rsqrt(variance + epsilon)
+  return norm_x * scale + bias
+
+
+def layer_norm(x, filters=None, epsilon=1e-6, name=None, reuse=None):
+  """Layer normalize the tensor x, averaging over the last dimension."""
+  if filters is None:
+    filters = shape_list(x)[-1]
+  with tf.compat.v1.variable_scope(
+      "layer_norm" if not name else name,
+      default_name="layer_norm",
+      values=[x],
+      reuse=reuse):
+    scale, bias = layer_norm_vars(filters)
+    return layer_norm_compute(x, epsilon, scale, bias)
+
+class LayerNormalization2(tf.keras.layers.Layer):
+  """Applies fused normalization."""
+  def __init__(self, hidden_size):
+    super(LayerNormalization2, self).__init__()
+    self.hidden_size = hidden_size
+
+  def build(self, input_shape):
+    self.scale = self.add_weight(
+        "layer_norm_scale",
+        shape=[self.hidden_size],
+        dtype="float32",
+        initializer=tf.ones_initializer(),
+        experimental_autocast=False)
+    self.bias = self.add_weight(
+        "layer_norm_bias",
+        shape=[self.hidden_size],
+        dtype="float32",
+        initializer=tf.zeros_initializer(),
+        experimental_autocast=False)
+    super(LayerNormalization2, self).build(input_shape)
+
+  def get_config(self):
+    return {
+        "hidden_size": self.hidden_size,
+    }
+
+  def call(self, x, epsilon=1e-6):
+    x_shape = tf.shape(x)
+    batch_size = x_shape[0]
+    length = x_shape[1]
+    print("batch_size = ", batch_size, ", length = ", length)
+    x = tf.reshape(x, [1, batch_size * length, 1, self.hidden_size])
+    #x = tf.transpose(x, perm=[0, 3, 2, 1])
+    x_new_shape = x.shape
+    print("x_shape = ", x_shape, ", x_new_shape = ", x_new_shape)
+
+    #ndims = len(x_new_shape)
+    #axis = [ndims -1]
+    #broadcast_shape = [1] * ndims
+    #for dim in axis:
+    #  broadcast_shape[dim] = x_new_shape.dims[dim].value
+
+    #def _broadcast(v):
+    #  if (v is not None and len(v.shape) != ndims and
+    #      axis != [ndims -1]):
+    #    return tf.reshape(v, broadcast_shape)
+    #  return v
+    #scale, offset = _broadcast(super(LayerNormalization2, self).gamma), _broadcast(super(LayerNormalization2, self).beta)
+    print("scale.shape = ", self.scale.shape, ", bias.shape = ", self.bias.shape)
+
+    #outputs, mean, variance = tf.compat.v1.nn.fused_batch_norm(
+    outputs, _, _ = tf.compat.v1.nn.fused_batch_norm(
+        x,
+        tf.constant(1.0, dtype ="float32", shape = [3072]), #self.scale,
+        tf.constant(0.0, dtype ="float32", shape = [3072]), #self.bias,
+        data_format="NCHW",
+        epsilon=epsilon)
+    #print("outputs.shape = ", outputs.shape, ", mean.shape = ", mean.shape, ", variance.shape = ", variance.shape)
+    #outputs = tf.transpose(outputs, perm=[0, 3, 2, 1])
+    outputs = tf.reshape(outputs, x_shape)
+    outputs = tf.cast(outputs, "float32") * self.scale + self.bias
+    outputs = tf.cast(outputs, x.dtype)
+    print("return shape = ", outputs.shape)
+    return outputs
+
+class LayerNormalization1(tf.keras.layers.Layer):
   """Applies layer normalization."""
 
   def __init__(self, hidden_size):
-    super(LayerNormalization, self).__init__()
+    super(LayerNormalization1, self).__init__()
     self.hidden_size = hidden_size
 
   def build(self, input_shape):
@@ -324,7 +454,7 @@ class LayerNormalization(tf.keras.layers.Layer):
         dtype="float32",
         initializer=tf.zeros_initializer(),
         experimental_autocast=False)
-    super(LayerNormalization, self).build(input_shape)
+    super(LayerNormalization1, self).build(input_shape)
 
   def get_config(self):
     return {
@@ -332,6 +462,7 @@ class LayerNormalization(tf.keras.layers.Layer):
     }
 
   def call(self, x, epsilon=1e-6):
+    """
     input_dtype = x.dtype
     if input_dtype == tf.float16:
       x = tf.cast(x, tf.float32)
@@ -339,7 +470,8 @@ class LayerNormalization(tf.keras.layers.Layer):
     variance = tf.reduce_mean(tf.square(x - mean), axis=[-1], keepdims=True)
     norm_x = (x - mean) * tf.math.rsqrt(variance + epsilon)
     return tf.cast(norm_x * self.scale + self.bias, input_dtype)
-
+    """
+    return layer_norm_compute(x, epsilon, self.scale, self.bias)
 
 class PrePostProcessingWrapper(tf.keras.layers.Layer):
   """Wrapper class that applies layer pre-processing and post-processing."""
@@ -352,7 +484,9 @@ class PrePostProcessingWrapper(tf.keras.layers.Layer):
 
   def build(self, input_shape):
     # Create normalization layer
-    self.layer_norm = LayerNormalization(self.params["hidden_size"])
+    self.layer_norm = LayerNormalization1(self.params["hidden_size"])
+    #self.layer_norm = tf.keras.layers.LayerNormalization()
+    #self.layer_norm = layer_norm
     super(PrePostProcessingWrapper, self).build(input_shape)
 
   def get_config(self):
@@ -407,7 +541,9 @@ class EncoderStack(tf.keras.layers.Layer):
       ])
 
     # Create final layer normalization layer.
-    self.output_normalization = LayerNormalization(params["hidden_size"])
+    self.output_normalization = LayerNormalization1(params["hidden_size"])
+    #self.output_normalization = tf.keras.layers.LayerNormalization()
+    #self.output_normalization = layer_norm
     super(EncoderStack, self).build(input_shape)
 
   def get_config(self):
@@ -480,7 +616,8 @@ class DecoderStack(tf.keras.layers.Layer):
           PrePostProcessingWrapper(enc_dec_attention_layer, params),
           PrePostProcessingWrapper(feed_forward_network, params)
       ])
-    self.output_normalization = LayerNormalization(params["hidden_size"])
+    self.output_normalization = LayerNormalization1(params["hidden_size"])
+    #self.output_normalization = tf.keras.layers.LayerNormalization()
     super(DecoderStack, self).build(input_shape)
 
   def get_config(self):

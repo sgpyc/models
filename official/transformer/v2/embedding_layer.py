@@ -34,6 +34,7 @@ class EmbeddingSharedWeights(tf.keras.layers.Layer):
     super(EmbeddingSharedWeights, self).__init__()
     self.vocab_size = vocab_size
     self.hidden_size = hidden_size
+    print("vocab_size = ", vocab_size, ", hidden_size = ", hidden_size)
 
   def build(self, input_shape):
     """Build embedding layer."""
@@ -79,7 +80,9 @@ class EmbeddingSharedWeights(tf.keras.layers.Layer):
     with tf.name_scope("embedding"):
       # Create binary mask of size [batch_size, length]
       mask = tf.cast(tf.not_equal(inputs, 0), tf.float32)
+      print("mask = ", mask)
       embeddings = tf.gather(self.shared_weights, inputs)
+      print("embedding = ", embeddings)
       embeddings *= tf.expand_dims(mask, -1)
       # Scale embedding by the sqrt of the hidden size
       embeddings *= self.hidden_size ** 0.5
@@ -99,6 +102,8 @@ class EmbeddingSharedWeights(tf.keras.layers.Layer):
       length = tf.shape(inputs)[1]
 
       x = tf.reshape(inputs, [-1, self.hidden_size])
+      print("x.shape = ", x.shape, ", shared_weights = ", self.shared_weights, " shape = ", self.shared_weights.shape)
       logits = tf.matmul(x, self.shared_weights, transpose_b=True)
+      print("logits = ", logits)
 
       return tf.reshape(logits, [batch_size, length, self.vocab_size])

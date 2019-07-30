@@ -33,11 +33,18 @@ def _float32_softmax(logits, name=None):
   Returns:
     A tensor with the same dtype as `logits`.
   """
-  input_dtype = logits.dtype
-  logits = tf.cast(logits, tf.float32)
-  output = tf.nn.softmax(logits, name=name)
-  return tf.cast(output, input_dtype)
+  #input_dtype = logits.dtype
+  #logits = tf.cast(logits, tf.float32)
+  #output = tf.nn.softmax(logits, name=name)
+  #return tf.cast(output, input_dtype)
+  return tf.nn.softmax(logits, name=name)
 
+def _print_shape_named(x, name):
+  print(name, " : shape = ", x.shape, ", dtype = ", x.dtype)
+
+def _print_shape(x, name_postfix=""):
+  #_print_shape_named(x, x.name + name_postfix)
+  _print_shape_named(x, name_postfix)
 
 class Attention(tf.keras.layers.Layer):
   """Multi-headed attention layer."""
@@ -141,9 +148,15 @@ class Attention(tf.keras.layers.Layer):
     # learned projections. This is in preparation of splitting them into
     # multiple heads. Multi-head attention uses multiple queries, keys, and
     # values rather than regular attention (which uses a single q, k, v).
+    _print_shape(x, " x")
+    _print_shape(y, " y")
+    #print("x.shape = ", x.shape, ", x.dtype = ", x.dtype, ", y.shape = ", y.shape, ", y.dtype = ", y.dtype)
     q = self.q_dense_layer(x)
     k = self.k_dense_layer(y)
     v = self.v_dense_layer(y)
+    _print_shape(q, " q0")
+    _print_shape(k, " k0")
+    _print_shape(v, " v0")
 
     if cache is not None:
       # Combine cached keys and values with new keys and values.
@@ -158,6 +171,9 @@ class Attention(tf.keras.layers.Layer):
     q = self.split_heads(q)
     k = self.split_heads(k)
     v = self.split_heads(v)
+    _print_shape(q, " q1")
+    _print_shape(k, " k1")
+    _print_shape(v, " v1")
 
     # Scale q to prevent the dot product between q and k from growing too large.
     depth = (self.hidden_size // self.num_heads)
@@ -165,17 +181,23 @@ class Attention(tf.keras.layers.Layer):
 
     # Calculate dot product attention
     logits = tf.matmul(q, k, transpose_b=True)
+    _print_shape(logits, " logits")
     logits += bias
+    _print_shape(bias, " bias")
     weights = _float32_softmax(logits, name="attention_weights")
+    _print_shape(weights, " weights")
     if training:
       weights = tf.nn.dropout(weights, rate=self.attention_dropout)
     attention_output = tf.matmul(weights, v)
+    _print_shape(attention_output, " attention_output0")
 
     # Recombine heads --> [batch_size, length, hidden_size]
     attention_output = self.combine_heads(attention_output)
+    _print_shape(attention_output, " attention_output1")
 
     # Run the combined outputs through another linear projection layer.
     attention_output = self.output_dense_layer(attention_output)
+    _print_shape(attention_output, " attention_output2")
     return attention_output
 
 

@@ -145,12 +145,22 @@ class TransformerTask(object):
         model = transformer.create_model(params, is_train)
         opt = self._create_optimizer()
         model.compile(opt)
+        #model.compile(opt, run_eagerly=True)
     else:
       model = transformer.create_model(params, is_train)
       opt = self._create_optimizer()
       model.compile(opt)
+      #model.compile(opt, run_eagerly=True)
 
     model.summary()
+    
+    # output model graph
+    model_func = tf.function(lambda x: model(model.inputs, training=True))
+    concrete_func = model_func.get_concrete_function(
+        tf.TensorSpec(model.inputs[0].shape, model.inputs[0].dtype))
+    f = open(params["model_dir"] + "/graph2.pbtxt", "w+")
+    print(concrete_func.graph.as_graph_def(), file=f)
+    f.close()
 
     # TODO(guptapriya): Figure out a way to structure input that works in both
     # distributed and non distributed cases.
@@ -167,6 +177,7 @@ class TransformerTask(object):
     iterations = flags_obj.train_steps // flags_obj.steps_between_evals
 
     cased_score, uncased_score = None, None
+    #summary_writer = tf.contrib.summary.create_file_writer(params["model_dir"])
     for i in range(1, iterations + 1):
       print("Start train iteration:{}/{}".format(i, iterations))
       history = model.fit(
@@ -189,6 +200,13 @@ class TransformerTask(object):
         uncased_score, cased_score = self.eval()
 
       print("BLEU: uncased={}, cased={}".format(uncased_score, cased_score))
+      #summary = tf.Summary(value=[
+      #    tf.Summary.Value(tag="bleu/uncased", simple_value=uncased_score),
+      #    tf.Summary.Value(tag="bleu/cased", simple_value=cased_score),
+      #])
+      #summary_writer.add_summary(summary, i * flags_obj.steps_between_evals)
+
+    #summary_writer.close()
 
     stats = misc.build_stats(history, callbacks)
     if uncased_score and cased_score:
@@ -253,6 +271,7 @@ class TransformerTask(object):
     """Creates optimizer."""
     params = self.params
     opt = optimizer.LazyAdam(
+    #opt = tf.keras.optimizers.Adam(
         params["learning_rate"],
         params["optimizer_adam_beta1"],
         params["optimizer_adam_beta2"],
@@ -260,7 +279,8 @@ class TransformerTask(object):
     if params["dtype"] == tf.float16:
       opt = tf.keras.mixed_precision.experimental.LossScaleOptimizer(
           opt, loss_scale=flags_core.get_loss_scale(self.flags_obj,
-                                                    default_for_fp16="dynamic"))
+                                                    default_for_fp16=256.0))
+                                                    #default_for_fp16="dynamic"))
     return opt
 
 
@@ -272,6 +292,7 @@ def _ensure_dir(log_dir):
 
 def main(_):
   flags_obj = flags.FLAGS
+  #tf.compat.v1.enable_eager_execution()
   with logger.benchmark_context(flags_obj):
     task = TransformerTask(flags_obj)
     if flags_obj.mode == "train":
@@ -286,5 +307,6 @@ def main(_):
 
 if __name__ == "__main__":
   tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.INFO)
+  #tf.compat.v1.enable_eager_execution()
   misc.define_transformer_flags()
   absl_app.run(main)
