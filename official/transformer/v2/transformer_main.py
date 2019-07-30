@@ -177,7 +177,7 @@ class TransformerTask(object):
     iterations = flags_obj.train_steps // flags_obj.steps_between_evals
 
     cased_score, uncased_score = None, None
-    #summary_writer = tf.contrib.summary.create_file_writer(params["model_dir"])
+    cased_score_history, uncased_score_history = [], []
     for i in range(1, iterations + 1):
       print("Start train iteration:{}/{}".format(i, iterations))
       history = model.fit(
@@ -198,20 +198,15 @@ class TransformerTask(object):
 
       if (flags_obj.bleu_source and flags_obj.bleu_ref):
         uncased_score, cased_score = self.eval()
-
-      print("BLEU: uncased={}, cased={}".format(uncased_score, cased_score))
-      #summary = tf.Summary(value=[
-      #    tf.Summary.Value(tag="bleu/uncased", simple_value=uncased_score),
-      #    tf.Summary.Value(tag="bleu/cased", simple_value=cased_score),
-      #])
-      #summary_writer.add_summary(summary, i * flags_obj.steps_between_evals)
-
-    #summary_writer.close()
+        cased_score_history.append([i, cased_score])
+        uncased_score_history.append([i, uncased_score])
 
     stats = misc.build_stats(history, callbacks)
     if uncased_score and cased_score:
       stats["bleu_uncased"] = uncased_score
       stats["bleu_cased"] = cased_score
+      stats["bleu_uncased_history"] = uncased_score_history
+      stats["bleu_cased_history"] = cased_score_history
     return stats
 
   def eval(self):

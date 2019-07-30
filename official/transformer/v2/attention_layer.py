@@ -21,6 +21,7 @@ from __future__ import print_function
 import tensorflow as tf
 
 
+<<<<<<< HEAD
 def _float32_softmax(logits, name=None):
   """Computes a softmax activation in float32.
 
@@ -46,6 +47,8 @@ def _print_shape(x, name_postfix=""):
   #_print_shape_named(x, x.name + name_postfix)
   _print_shape_named(x, name_postfix)
 
+=======
+>>>>>>> a989673b1c8b1a06053af757358448d2c80cd08e
 class Attention(tf.keras.layers.Layer):
   """Multi-headed attention layer."""
 
@@ -184,7 +187,10 @@ class Attention(tf.keras.layers.Layer):
     _print_shape(logits, " logits")
     logits += bias
     _print_shape(bias, " bias")
-    weights = _float32_softmax(logits, name="attention_weights")
+    # Note that softmax internally performs math operations using float32
+    # for numeric stability. When training with float16, we keep the input
+    # and output in float16 for better performance.
+    weights = tf.nn.softmax(logits, name="attention_weights")
     _print_shape(weights, " weights")
     if training:
       weights = tf.nn.dropout(weights, rate=self.attention_dropout)
