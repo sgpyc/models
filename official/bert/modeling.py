@@ -799,13 +799,9 @@ class Transformer(tf.keras.layers.Layer):
               name=("layer_%d" % i)))
     super(Transformer, self).build(unused_input_shapes)
 
-    # Workaround for Keras bug where layers aren't tracked properly.
-    for i in range(len(self.layers)):
-      self.__setattr__("layer%d" % i, self.layers[i])
-
-  def __call__(self, input_tensor, attention_mask=None):
+  def __call__(self, input_tensor, attention_mask=None, **kwargs):
     inputs = pack_inputs([input_tensor, attention_mask])
-    return super(Transformer, self).__call__(inputs=inputs)
+    return super(Transformer, self).__call__(inputs=inputs, **kwargs)
 
   def call(self, inputs):
     """Implements call() for the layer."""

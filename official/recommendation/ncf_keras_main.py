@@ -255,7 +255,7 @@ def run_ncf(_):
     callbacks.append(per_epoch_callback)
   else:
     assert params["eval_dataset_path"] and params["input_meta_data_path"]
-    with tf.gfile.GFile(params["input_meta_data_path"], "rb") as reader:
+    with tf.io.gfile.GFile(params["input_meta_data_path"], "rb") as reader:
       input_meta_data = json.loads(reader.read().decode("utf-8"))
       num_users = input_meta_data["num_users"]
       num_items = input_meta_data["num_items"]
@@ -370,9 +370,10 @@ def run_ncf(_):
   else:
     with distribution_utils.get_strategy_scope(strategy):
 
-      keras_model.compile(optimizer=optimizer,
-                          run_eagerly=FLAGS.run_eagerly,
-                          run_distributed=FLAGS.force_v2_in_keras_compile)
+      keras_model.compile(
+          optimizer=optimizer,
+          run_eagerly=FLAGS.run_eagerly,
+          experimental_run_tf_function=FLAGS.force_v2_in_keras_compile)
 
       history = keras_model.fit(
           train_input_dataset,
