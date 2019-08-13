@@ -193,8 +193,17 @@ class BertModel(tf.keras.layers.Layer):
     inputs = pack_inputs([input_word_ids, input_mask, input_type_ids])
     return super(BertModel, self).__call__(inputs, **kwargs)
 
-  def call(self, inputs):
-    """Implements call() for the layer."""
+  def call(self, inputs, mode="bert"):
+    """Implements call() for the layer.
+
+    Args:
+      inputs: packed input tensors.
+      mode: string, `bert` or `encoder`.
+    Returns:
+      Output tensor of the last layer for BERT training (mode=`bert`) which
+      is a float Tensor of shape [batch_size, seq_length, hidden_size] or
+      a list of output tensors for encoder usage (mode=`encoder`).
+    """
     unpacked_inputs = unpack_inputs(inputs)
     input_word_ids = unpacked_inputs[0]
     input_mask = unpacked_inputs[1]
@@ -209,10 +218,13 @@ class BertModel(tf.keras.layers.Layer):
     if input_mask is not None:
       attention_mask = create_attention_mask_from_input_mask(
           input_word_ids, input_mask)
+
+    if mode == "encoder":
+      return self.encoder(
+          embedding_tensor, attention_mask, return_all_layers=True)
+
     sequence_output = self.encoder(embedding_tensor, attention_mask)
-
     first_token_tensor = tf.squeeze(sequence_output[:, 0:1, :], axis=1)
-
     pooled_output = self.pooler_transform(first_token_tensor)
 
     return (pooled_output, sequence_output)
@@ -264,6 +276,7 @@ class EmbeddingPostprocessor(tf.keras.layers.Layer):
                max_position_embeddings=512,
                dropout_prob=0.0,
                initializer_range=0.02,
+               initializer=None,
                **kwargs):
     super(EmbeddingPostprocessor, self).__init__(**kwargs)
     self.use_type_embeddings = use_type_embeddings
@@ -272,6 +285,11 @@ class EmbeddingPostprocessor(tf.keras.layers.Layer):
     self.max_position_embeddings = max_position_embeddings
     self.dropout_prob = dropout_prob
     self.initializer_range = initializer_range
+
+    if not initializer:
+      self.initializer = get_initializer(self.initializer_range)
+    else:
+      self.initializer = initializer
 
     if self.use_type_embeddings and not self.token_type_vocab_size:
       raise ValueError("If `use_type_embeddings` is True, then "
@@ -711,6 +729,15 @@ class TransformerBlock(tf.keras.layers.Layer):
         name="output_layer_norm", axis=-1, epsilon=1e-12)
     super(TransformerBlock, self).build(unused_input_shapes)
 
+  def common_layers(self):
+    """Explicitly gets all layer objects inside a Transformer encoder block."""
+    return [
+        self.attention_layer, self.attention_output_dense,
+        self.attention_dropout, self.attention_layer_norm,
+        self.intermediate_dense, self.output_dense, self.output_dropout,
+        self.output_layer_norm
+    ]
+
   def __call__(self, input_tensor, attention_mask=None):
     inputs = pack_inputs([input_tensor, attention_mask])
     return super(TransformerBlock, self).__call__(inputs)
@@ -803,16 +830,30 @@ class Transformer(tf.keras.layers.Layer):
     inputs = pack_inputs([input_tensor, attention_mask])
     return super(Transformer, self).__call__(inputs=inputs, **kwargs)
 
-  def call(self, inputs):
-    """Implements call() for the layer."""
+  def call(self, inputs, return_all_layers=False):
+    """Implements call() for the layer.
+
+    Args:
+      inputs: packed inputs.
+      return_all_layers: bool, whether to return outputs of all layers inside
+        encoders.
+    Returns:
+      Output tensor of the last layer or a list of output tensors.
+    """
     unpacked_inputs = unpack_inputs(inputs)
     input_tensor = unpacked_inputs[0]
     attention_mask = unpacked_inputs[1]
     output_tensor = input_tensor
 
+    all_layer_outputs = []
     for layer in self.layers:
       output_tensor = layer(output_tensor, attention_mask)
-    return output_tensor
+      all_layer_outputs.append(output_tensor)
+
+    if return_all_layers:
+      return all_layer_outputs
+
+    return all_layer_outputs[-1]
 
 
 def pack_inputs(inputs):

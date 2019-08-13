@@ -33,6 +33,11 @@ from official.transformer.v2 import metrics
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn
 
+# Disable the not-callable lint error, since it claims many objects are not
+# callable when they actually are.
+# pylint: disable=not-callable
+
+
 def create_model(params, is_train):
   """Creates transformer model."""
   with tf.name_scope("model"):
@@ -82,7 +87,7 @@ class Transformer(tf.keras.Model):
     self.params = params
     #print("params[vocab_size] = ", params["vocab_size"])
     self.embedding_softmax_layer = embedding_layer.EmbeddingSharedWeights(
-        params["vocab_size"], params["hidden_size"])
+        params["vocab_size"], params["hidden_size"], dtype=params["dtype"])
     self.encoder_stack = EncoderStack(params)
     self.decoder_stack = DecoderStack(params)
 
@@ -219,8 +224,9 @@ class Transformer(tf.keras.Model):
 
     timing_signal = model_utils.get_position_encoding(
         max_decode_length + 1, self.params["hidden_size"])
+    timing_signal = tf.cast(timing_signal, self.params["dtype"])
     decoder_self_attention_bias = model_utils.get_decoder_self_attention_bias(
-        max_decode_length)
+        max_decode_length, dtype=self.params["dtype"])
 
     def symbols_to_logits_fn(ids, i, cache):
       """Generate logits for next potential IDs.
@@ -260,12 +266,11 @@ class Transformer(tf.keras.Model):
 
   def predict(self, encoder_outputs, encoder_decoder_attention_bias, training):
     """Return predicted sequence."""
-    # Currently, we always do prediction in float32.
-    # TODO(reedwm): Add float16 support.
-    encoder_outputs = tf.cast(encoder_outputs, tf.float32)
     batch_size = tf.shape(encoder_outputs)[0]
     input_length = tf.shape(encoder_outputs)[1]
     max_decode_length = input_length + self.params["extra_decode_length"]
+    encoder_decoder_attention_bias = tf.cast(encoder_decoder_attention_bias,
+                                             self.params["dtype"])
 
     symbols_to_logits_fn = self._get_symbols_to_logits_fn(
         max_decode_length, training)
@@ -277,8 +282,10 @@ class Transformer(tf.keras.Model):
     # pylint: disable=g-complex-comprehension
     cache = {
         "layer_%d" % layer: {
-            "k": tf.zeros([batch_size, 0, self.params["hidden_size"]]),
-            "v": tf.zeros([batch_size, 0, self.params["hidden_size"]])
+            "k": tf.zeros([batch_size, 0, self.params["hidden_size"]],
+                          dtype=self.params["dtype"]),
+            "v": tf.zeros([batch_size, 0, self.params["hidden_size"]],
+                          dtype=self.params["dtype"])
         } for layer in range(self.params["num_hidden_layers"])
     }
     # pylint: enable=g-complex-comprehension
@@ -296,7 +303,8 @@ class Transformer(tf.keras.Model):
         beam_size=self.params["beam_size"],
         alpha=self.params["alpha"],
         max_decode_length=max_decode_length,
-        eos_id=EOS_ID)
+        eos_id=EOS_ID,
+        dtype=self.params["dtype"])
 
     # Get the top sequence for each batch element
     top_decoded_ids = decoded_ids[:, 0, 1:]
