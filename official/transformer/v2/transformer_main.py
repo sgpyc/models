@@ -155,12 +155,12 @@ class TransformerTask(object):
     model.summary()
     
     # output model graph
-    model_func = tf.function(lambda x: model(model.inputs, training=True))
-    concrete_func = model_func.get_concrete_function(
-        tf.TensorSpec(model.inputs[0].shape, model.inputs[0].dtype))
-    f = open(params["model_dir"] + "/graph2.pbtxt", "w+")
-    print(concrete_func.graph.as_graph_def(), file=f)
-    f.close()
+    #model_func = tf.function(lambda x: model(model.inputs, training=True))
+    #concrete_func = model_func.get_concrete_function(
+    #    tf.TensorSpec(model.inputs[0].shape, model.inputs[0].dtype))
+    #f = open(params["model_dir"] + "/graph2.pbtxt", "w+")
+    #print(concrete_func.graph.as_graph_def(), file=f)
+    #f.close()
 
     # TODO(guptapriya): Figure out a way to structure input that works in both
     # distributed and non distributed cases.
@@ -281,8 +281,10 @@ class TransformerTask(object):
 
 def _ensure_dir(log_dir):
   """Makes log dir if not existed."""
-  if not os.path.exists(log_dir):
-    os.makedirs(log_dir)
+  #if not os.path.exists(log_dir):
+  if not tf.io.gfile.exists(log_dir):
+    #os.makedirs(log_dir)
+    tf.io.gfile.makedirs(log_dir)
 
 
 def main(_):

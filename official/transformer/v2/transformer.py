@@ -80,7 +80,7 @@ class Transformer(tf.keras.Model):
     """
     super(Transformer, self).__init__(name=name)
     self.params = params
-    print("params[vocab_size] = ", params["vocab_size"])
+    #print("params[vocab_size] = ", params["vocab_size"])
     self.embedding_softmax_layer = embedding_layer.EmbeddingSharedWeights(
         params["vocab_size"], params["hidden_size"])
     self.encoder_stack = EncoderStack(params)
@@ -209,6 +209,7 @@ class Transformer(tf.keras.Model):
           decoder_self_attention_bias,
           attention_bias,
           training=training)
+      # print("decoder_stack outputs = ", outputs)
       logits = self.embedding_softmax_layer(outputs, mode="linear")
       logits = tf.cast(logits, tf.float32)
       return logits
@@ -350,7 +351,7 @@ def layer_norm_compute(x, epsilon, scale, bias):
   counts, means_ss, variance_ss, _, = tf.nn.sufficient_statistics(
       x, axes=[-1], keepdims=True)
   mean, variance = tf.nn.normalize_moments(counts, means_ss, variance_ss, None)
-  print("mean.shape = ", mean.shape, ", variance.shape = ", variance.shape)
+  #print("mean.shape = ", mean.shape, ", variance.shape = ", variance.shape)
   norm_x = (x - mean) * tf.math.rsqrt(variance + epsilon)
   return norm_x * scale + bias
 
@@ -397,11 +398,11 @@ class LayerNormalization2(tf.keras.layers.Layer):
     x_shape = tf.shape(x)
     batch_size = x_shape[0]
     length = x_shape[1]
-    print("batch_size = ", batch_size, ", length = ", length)
+    #print("batch_size = ", batch_size, ", length = ", length)
     x = tf.reshape(x, [1, batch_size * length, 1, self.hidden_size])
     #x = tf.transpose(x, perm=[0, 3, 2, 1])
     x_new_shape = x.shape
-    print("x_shape = ", x_shape, ", x_new_shape = ", x_new_shape)
+    #print("x_shape = ", x_shape, ", x_new_shape = ", x_new_shape)
 
     #ndims = len(x_new_shape)
     #axis = [ndims -1]
@@ -415,13 +416,15 @@ class LayerNormalization2(tf.keras.layers.Layer):
     #    return tf.reshape(v, broadcast_shape)
     #  return v
     #scale, offset = _broadcast(super(LayerNormalization2, self).gamma), _broadcast(super(LayerNormalization2, self).beta)
-    print("scale.shape = ", self.scale.shape, ", bias.shape = ", self.bias.shape)
+    #print("scale.shape = ", self.scale.shape, ", bias.shape = ", self.bias.shape)
 
     #outputs, mean, variance = tf.compat.v1.nn.fused_batch_norm(
     outputs, _, _ = tf.compat.v1.nn.fused_batch_norm(
         x,
-        tf.constant(1.0, dtype ="float32", shape = [3072]), #self.scale,
-        tf.constant(0.0, dtype ="float32", shape = [3072]), #self.bias,
+        tf.fill([batch_size * length], 1.0),
+        tf.fill([batch_size * length], 0.0),
+        #tf.constant(1.0, dtype ="float32", shape = [3072]), #self.scale,
+        #tf.constant(0.0, dtype ="float32", shape = [3072]), #self.bias,
         data_format="NCHW",
         epsilon=epsilon)
     #print("outputs.shape = ", outputs.shape, ", mean.shape = ", mean.shape, ", variance.shape = ", variance.shape)
@@ -429,8 +432,18 @@ class LayerNormalization2(tf.keras.layers.Layer):
     outputs = tf.reshape(outputs, x_shape)
     outputs = tf.cast(outputs, "float32") * self.scale + self.bias
     outputs = tf.cast(outputs, x.dtype)
-    print("return shape = ", outputs.shape)
+    #print("return shape = ", outputs.shape)
     return outputs
+
+class LayerNormalization0(tf.keras.layers.Layer):
+  def __init__(self, hidden_size):
+    super(LayerNormalization0, self).__init__()
+
+  def build(self, input_shape):
+    super(LayerNormalization0, self).build(input_shape)
+
+  def call(self, x, epsilon=1e-6):
+    return x
 
 class LayerNormalization1(tf.keras.layers.Layer):
   """Applies layer normalization."""
@@ -465,7 +478,7 @@ class LayerNormalization1(tf.keras.layers.Layer):
     }
 
   def call(self, x, epsilon=1e-6):
-    """
+    #"""
     input_dtype = x.dtype
     if input_dtype == tf.float16:
       x = tf.cast(x, tf.float32)
@@ -473,8 +486,8 @@ class LayerNormalization1(tf.keras.layers.Layer):
     variance = tf.reduce_mean(tf.square(x - mean), axis=[-1], keepdims=True)
     norm_x = (x - mean) * tf.math.rsqrt(variance + epsilon)
     return tf.cast(norm_x * self.scale + self.bias, input_dtype)
-    """
-    return layer_norm_compute(x, epsilon, self.scale, self.bias)
+    #"""
+    #return layer_norm_compute(x, epsilon, self.scale, self.bias)
 
 class PrePostProcessingWrapper(tf.keras.layers.Layer):
   """Wrapper class that applies layer pre-processing and post-processing."""
