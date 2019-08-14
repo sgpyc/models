@@ -20,8 +20,6 @@ from __future__ import print_function
 
 import tensorflow as tf
 
-
-<<<<<<< HEAD
 def _float32_softmax(logits, name=None):
   """Computes a softmax activation in float32.
 
@@ -41,14 +39,13 @@ def _float32_softmax(logits, name=None):
   return tf.nn.softmax(logits, name=name)
 
 def _print_shape_named(x, name):
-  print(name, " : shape = ", x.shape, ", dtype = ", x.dtype)
+  #print(name, " : shape = ", x.shape, ", dtype = ", x.dtype)
+  name1 = name
 
 def _print_shape(x, name_postfix=""):
   #_print_shape_named(x, x.name + name_postfix)
   _print_shape_named(x, name_postfix)
 
-=======
->>>>>>> a989673b1c8b1a06053af757358448d2c80cd08e
 class Attention(tf.keras.layers.Layer):
   """Multi-headed attention layer."""
 

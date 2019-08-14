@@ -268,8 +268,8 @@ class TransformerTask(object):
     if params["dtype"] == tf.float16:
       opt = tf.keras.mixed_precision.experimental.LossScaleOptimizer(
           opt, loss_scale=flags_core.get_loss_scale(self.flags_obj,
-                                                    default_for_fp16=256.0))
-                                                    #default_for_fp16="dynamic"))
+                                                    #default_for_fp16=256.0))
+                                                    default_for_fp16="dynamic"))
     return opt
 
 

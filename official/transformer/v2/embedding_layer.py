@@ -32,15 +32,15 @@ class EmbeddingSharedWeights(tf.keras.layers.Layer):
       hidden_size: Dimensionality of the embedding. (Typically 512 or 1024)
       dtype: The dtype of the layer: float16 or float32.
     """
-    if dtype == tf.float16:
+    #if dtype == tf.float16:
       # We cannot rely on the global policy of "infer_with_float32_vars", as
       # this layer is called on both int64 inputs and floating-point inputs.
       # If "infer_with_float32_vars" is used, the dtype will be inferred to be
       # int64, which means floating-point inputs would not be casted.
       # TODO(b/138859351): Remove this logic once we stop using the deprecated
       # "infer_with_float32_vars" policy
-      dtype = tf.keras.mixed_precision.experimental.Policy(
-          "float16_with_float32_vars")
+      #dtype = tf.keras.mixed_precision.experimental.Policy(
+      #    "float16_with_float32_vars")
     super(EmbeddingSharedWeights, self).__init__(dtype=dtype)
     self.vocab_size = vocab_size
     self.hidden_size = hidden_size
