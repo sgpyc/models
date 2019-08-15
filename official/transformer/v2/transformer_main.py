@@ -147,11 +147,13 @@ class TransformerTask(object):
       with self.distribution_strategy.scope():
         model = transformer.create_model(params, is_train)
         opt = self._create_optimizer()
-        model.compile(opt)
+        #model.compile(opt)
+        model.compile(opt, run_eagerly=True)
     else:
       model = transformer.create_model(params, is_train)
       opt = self._create_optimizer()
-      model.compile(opt)
+      #model.compile(opt)
+      model.compile(opt, run_eagerly=True)
 
     model.summary()
 
@@ -275,6 +277,7 @@ def _ensure_dir(log_dir):
 
 def main(_):
   flags_obj = flags.FLAGS
+  tf.compat.v1.enable_eager_execution()
   with logger.benchmark_context(flags_obj):
     task = TransformerTask(flags_obj)
     if flags_obj.mode == "train":
@@ -289,5 +292,6 @@ def main(_):
 
 if __name__ == "__main__":
   tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.INFO)
+  tf.compat.v1.enable_eager_execution()
   misc.define_transformer_flags()
   absl_app.run(main)
