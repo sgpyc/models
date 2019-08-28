@@ -112,8 +112,15 @@ class Subtokenizer(object):
       tf.compat.v1.logging.info("Vocab file already exists (%s)" % vocab_file)
     else:
       tf.compat.v1.logging.info("Begin steps to create subtoken vocabulary...")
+      print("files={}, file_byte_limit={}, correct_strip={}"
+          .format(files, file_byte_limit, correct_strip))
       token_counts = _count_tokens(files, file_byte_limit, correct_strip)
+      #print("token_counts={}".format(token_counts))
+      for token in token_counts:
+        #print("{} : {}".format(repr(unicode(token)), token_counts[token]))
+        print("{} : {}".format(repr(token), token_counts[token]))
       alphabet = _generate_alphabet_dict(token_counts)
+      print("alphabet = {}".format(alphabet))
       subtoken_list = _generate_subtokens_with_target_vocab_size(
           token_counts, alphabet, target_vocab_size, threshold, min_count,
           reserved_tokens)
@@ -343,8 +350,11 @@ def _count_tokens(files, file_byte_limit=1e6, correct_strip=True):
     lines from the files.
   """
   token_counts = collections.defaultdict(int)
+  file_counter = 0
+  #file_lines = [7155, 7650, 6696, 5957, 7182, 5879]
 
   for filepath in files:
+    num_lines = 0
     with tf.io.gfile.GFile(filepath, mode="r") as reader:
       file_byte_budget = file_byte_limit
       counter = 0
@@ -353,17 +363,33 @@ def _count_tokens(files, file_byte_limit=1e6, correct_strip=True):
         if counter < lines_to_skip:
           counter += 1
         else:
+          #if (counter == lines_to_skip):
           if file_byte_budget < 0:
+          #if num_lines >= file_lines[file_counter]:
             break
           if correct_strip:
             line = native_to_unicode(line)
+          #else:
+          #  line = repr(line)
           line = line.strip()
           file_byte_budget -= len(line)
           counter = 0
-
+          num_lines += 1
           # Add words to token counts
-          for token in _split_string_to_tokens(native_to_unicode(line)):
+          token_counter = 0
+          line_unicode = native_to_unicode(line)
+          #line_unicode = line_unicode.replace(u'\xa0', u' ')
+          #line_unicode = line_unicode.strip()
+          for token in _split_string_to_tokens(line_unicode):
             token_counts[token] += 1
+            print("  Token {} : {}".format(token_counter, repr(token)))
+            token_counter += 1
+          print("Line {}, len(line) = {}, len(line_unicode) = {}, #tokens = {}"
+            .format(num_lines, len(line), len(line_unicode), len(token_counts)))
+    print("file {}, #lines = {}, #lines_skipped = {}"
+      .format(filepath, num_lines, lines_to_skip))
+    print("len(token_counts) = {}".format(len(token_counts)))
+    file_counter += 1
   return token_counts
 
 

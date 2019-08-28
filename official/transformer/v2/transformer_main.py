@@ -160,19 +160,6 @@ class TransformerTask(object):
         enable_xla=flags_obj.enable_xla)
 
     _ensure_dir(flags_obj.model_dir)
-<<<<<<< HEAD
-    if self.distribution_strategy:
-      with self.distribution_strategy.scope():
-        model = transformer.create_model(params, is_train)
-        opt = self._create_optimizer()
-        model.compile(opt)
-        #model.compile(opt, run_eagerly=True)
-    else:
-      model = transformer.create_model(params, is_train)
-      opt = self._create_optimizer()
-      model.compile(opt)
-      #model.compile(opt, run_eagerly=True)
-=======
     with distribution_utils.get_strategy_scope(self.distribution_strategy):
       model = transformer.create_model(params, is_train=True)
       opt = self._create_optimizer()
@@ -181,7 +168,6 @@ class TransformerTask(object):
             "training_loss", dtype=tf.float32)
       else:
         model.compile(opt)
->>>>>>> 824ff2d637b807465dc7d48130d086b4e7df19c7
 
     model.summary()
     
@@ -397,8 +383,8 @@ class TransformerTask(object):
     if params["dtype"] == tf.float16:
       opt = tf.keras.mixed_precision.experimental.LossScaleOptimizer(
           opt, loss_scale=flags_core.get_loss_scale(self.flags_obj,
-                                                    #default_for_fp16=256.0))
-                                                    default_for_fp16="dynamic"))
+                                                    default_for_fp16=256.0))
+                                                    #default_for_fp16="dynamic"))
     return opt
 
 
@@ -433,11 +419,7 @@ def main(_):
 
 
 if __name__ == "__main__":
-<<<<<<< HEAD
   tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.INFO)
   #tf.compat.v1.enable_eager_execution()
-=======
-  logging.set_verbosity(logging.INFO)
->>>>>>> 824ff2d637b807465dc7d48130d086b4e7df19c7
   misc.define_transformer_flags()
   absl_app.run(main)

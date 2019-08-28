@@ -164,16 +164,16 @@ def download_from_url(path, url):
   found_file = find_file(path, filename, max_depth=0)
   if found_file is None:
     filename = os.path.join(path, filename)
-    tf.logging.info("Downloading from %s to %s." % (url, filename))
+    tf.compat.v1.logging.info("Downloading from %s to %s." % (url, filename))
     inprogress_filepath = filename + ".incomplete"
     inprogress_filepath, _ = urllib.request.urlretrieve(
         url, inprogress_filepath, reporthook=download_report_hook)
     # Print newline to clear the carriage return from the download progress.
     print()
-    tf.gfile.Rename(inprogress_filepath, filename)
+    tf.io.gfile.rename(inprogress_filepath, filename)
     return filename
   else:
-    tf.logging.info("Already downloaded: %s (at %s)." % (url, found_file))
+    tf.compat.v1.logging.info("Already downloaded: %s (at %s)." % (url, found_file))
     return found_file
 
 
@@ -196,14 +196,14 @@ def download_and_extract(path, url, input_filename, target_filename):
   input_file = find_file(path, input_filename)
   target_file = find_file(path, target_filename)
   if input_file and target_file:
-    tf.logging.info("Already downloaded and extracted %s." % url)
+    tf.compat.v1.logging.info("Already downloaded and extracted %s." % url)
     return input_file, target_file
 
   # Download archive file if it doesn't already exist.
   compressed_file = download_from_url(path, url)
 
   # Extract compressed files
-  tf.logging.info("Extracting %s." % compressed_file)
+  tf.compat.v1.logging.info("Extracting %s." % compressed_file)
   with tarfile.open(compressed_file, "r:gz") as corpus_tar:
     corpus_tar.extractall(path)
 
@@ -239,7 +239,7 @@ def compile_files(raw_dir, raw_files, tag):
   Returns:
     Full path of compiled input and target files.
   """
-  tf.logging.info("Compiling files with tag %s." % tag)
+  tf.compat.v1.logging.info("Compiling files with tag %s." % tag)
   filename = "%s-%s" % (_PREFIX, tag)
   input_compiled_file = os.path.join(raw_dir, filename + ".lang1")
   target_compiled_file = os.path.join(raw_dir, filename + ".lang2")
@@ -250,7 +250,7 @@ def compile_files(raw_dir, raw_files, tag):
         input_file = raw_files["inputs"][i]
         target_file = raw_files["targets"][i]
 
-        tf.logging.info("Reading files %s and %s." % (input_file, target_file))
+        tf.compat.v1.logging.info("Reading files %s and %s." % (input_file, target_file))
         write_file(input_writer, input_file)
         write_file(target_writer, target_file)
   return input_compiled_file, target_compiled_file
@@ -286,21 +286,21 @@ def encode_and_save_files(
                for n in range(total_shards)]
 
   if all_exist(filepaths):
-    tf.logging.info("Files with tag %s already exist." % tag)
+    tf.compat.v1.logging.info("Files with tag %s already exist." % tag)
     return filepaths
 
-  tf.logging.info("Saving files with tag %s." % tag)
+  tf.compat.v1.logging.info("Saving files with tag %s." % tag)
   input_file = raw_files[0]
   target_file = raw_files[1]
 
   # Write examples to each shard in round robin order.
   tmp_filepaths = [fname + ".incomplete" for fname in filepaths]
-  writers = [tf.python_io.TFRecordWriter(fname) for fname in tmp_filepaths]
+  writers = [tf.io.TFRecordWriter(fname) for fname in tmp_filepaths]
   counter, shard = 0, 0
   for counter, (input_line, target_line) in enumerate(zip(
       txt_line_iterator(input_file), txt_line_iterator(target_file))):
     if counter > 0 and counter % 100000 == 0:
-      tf.logging.info("\tSaving case %d." % counter)
+      tf.compat.v1.logging.info("\tSaving case %d." % counter)
     example = dict_to_example(
         {"inputs": subtokenizer.encode(input_line, add_eos=True),
          "targets": subtokenizer.encode(target_line, add_eos=True)})
@@ -310,9 +310,9 @@ def encode_and_save_files(
     writer.close()
 
   for tmp_name, final_name in zip(tmp_filepaths, filepaths):
-    tf.gfile.Rename(tmp_name, final_name)
+    tf.io.gfile.rename(tmp_name, final_name)
 
-  tf.logging.info("Saved %d Examples", counter + 1)
+  tf.compat.v1.logging.info("Saved %d Examples", counter + 1)
   return filepaths
 
 
@@ -324,18 +324,18 @@ def shard_filename(path, tag, shard_num, total_shards):
 
 def shuffle_records(fname):
   """Shuffle records in a single file."""
-  tf.logging.info("Shuffling records in file %s" % fname)
+  tf.compat.v1.logging.info("Shuffling records in file %s" % fname)
 
   # Rename file prior to shuffling
   tmp_fname = fname + ".unshuffled"
-  tf.gfile.Rename(fname, tmp_fname)
+  tf.io.gfile.rename(fname, tmp_fname)
 
   reader = tf.compat.v1.io.tf_record_iterator(tmp_fname)
   records = []
   for record in reader:
     records.append(record)
     if len(records) % 100000 == 0:
-      tf.logging.info("\tRead: %d", len(records))
+      tf.compat.v1.logging.info("\tRead: %d", len(records))
 
   random.shuffle(records)
 
@@ -344,9 +344,9 @@ def shuffle_records(fname):
     for count, record in enumerate(records):
       w.write(record)
       if count > 0 and count % 100000 == 0:
-        tf.logging.info("\tWriting record: %d" % count)
+        tf.compat.v1.logging.info("\tWriting record: %d" % count)
 
-  tf.gfile.Remove(tmp_fname)
+  tf.io.gfile.remove(tmp_fname)
 
 
 def dict_to_example(dictionary):
@@ -360,45 +360,48 @@ def dict_to_example(dictionary):
 def all_exist(filepaths):
   """Returns true if all files in the list exist."""
   for fname in filepaths:
-    if not tf.gfile.Exists(fname):
+    if not tf.io.gfile.exists(fname):
       return False
   return True
 
 
 def make_dir(path):
-  if not tf.gfile.Exists(path):
-    tf.logging.info("Creating directory %s" % path)
-    tf.gfile.MakeDirs(path)
+  if not tf.io.gfile.exists(path):
+    tf.compat.v1.logging.info("Creating directory %s" % path)
+    tf.io.gfile.makedirs(path)
 
 
 def main(unused_argv):
   """Obtain training and evaluation data for the Transformer model."""
   make_dir(FLAGS.raw_dir)
   make_dir(FLAGS.data_dir)
-
+  
+  """
   # Download test_data
-  tf.logging.info("Step 1/5: Downloading test data")
+  tf.compat.v1.logging.info("Step 1/5: Downloading test data")
   train_files = get_raw_files(FLAGS.data_dir, _TEST_DATA_SOURCES)
+  """
 
   # Get paths of download/extracted training and evaluation files.
-  tf.logging.info("Step 2/5: Downloading data from source")
+  tf.compat.v1.logging.info("Step 2/5: Downloading data from source")
   train_files = get_raw_files(FLAGS.raw_dir, _TRAIN_DATA_SOURCES)
   eval_files = get_raw_files(FLAGS.raw_dir, _EVAL_DATA_SOURCES)
 
   # Create subtokenizer based on the training files.
-  tf.logging.info("Step 3/5: Creating subtokenizer and building vocabulary")
+  tf.compat.v1.logging.info("Step 3/5: Creating subtokenizer and building vocabulary")
   train_files_flat = train_files["inputs"] + train_files["targets"]
   vocab_file = os.path.join(FLAGS.data_dir, VOCAB_FILE)
   subtokenizer = tokenizer.Subtokenizer.init_from_files(
       vocab_file, train_files_flat, _TARGET_VOCAB_SIZE, _TARGET_THRESHOLD,
-      min_count=None if FLAGS.search else _TRAIN_DATA_MIN_COUNT)
+      min_count=None if FLAGS.search else _TRAIN_DATA_MIN_COUNT,
+      correct_strip=True)
 
-  tf.logging.info("Step 4/5: Compiling training and evaluation data")
+  tf.compat.v1.logging.info("Step 4/5: Compiling training and evaluation data")
   compiled_train_files = compile_files(FLAGS.raw_dir, train_files, _TRAIN_TAG)
   compiled_eval_files = compile_files(FLAGS.raw_dir, eval_files, _EVAL_TAG)
 
   # Tokenize and save data as Examples in the TFRecord format.
-  tf.logging.info("Step 5/5: Preprocessing and saving data")
+  tf.compat.v1.logging.info("Step 5/5: Preprocessing and saving data")
   train_tfrecord_files = encode_and_save_files(
       subtokenizer, FLAGS.data_dir, compiled_train_files, _TRAIN_TAG,
       _TRAIN_SHARDS)
@@ -408,7 +411,6 @@ def main(unused_argv):
 
   for fname in train_tfrecord_files:
     shuffle_records(fname)
-
 
 def define_data_download_flags():
   """Add flags specifying data download arguments."""
@@ -428,7 +430,7 @@ def define_data_download_flags():
 
 
 if __name__ == "__main__":
-  tf.logging.set_verbosity(tf.logging.INFO)
+  tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.INFO)
   define_data_download_flags()
   FLAGS = flags.FLAGS
   absl_app.run(main)
